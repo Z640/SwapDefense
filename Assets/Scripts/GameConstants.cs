@@ -21,7 +21,10 @@ public static class GameConstants
     public const float PlayerSwapCooldown = 6.0f;
     public const float LowHealthWarningThreshold = 25.0f;
 
-    public const float BulletSpeed = 840.0f;
+    public const float DefaultAimRotationLerpSpeed = 60.0f;
+    public const float DefaultHitboxMultiplier = 1.3f;
+
+    public const float BulletSpeed = 1680.0f;
     public const float BulletVisualRadius = 3.0f;
     public const float BulletOutBoundsMargin = 100.0f;
 

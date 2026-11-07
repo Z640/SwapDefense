@@ -3,37 +3,37 @@ using UnityEngine;
 
 public class CombatSystem : MonoBehaviour
 {
-    private class ActiveBullet
-    {
-        public GameObject BulletObject;
-        public Vector2 Position;
-        public Vector2 Direction;
-    }
-
-    [Header("References")]
+    [Header("Prefab & System References")]
+    [SerializeField] private Bullet bulletPrefab;
     [SerializeField] private Transform bulletContainer;
     [SerializeField] private WaveSpawner waveSpawner;
+
+    [Header("Combat Tuning")]
+    [SerializeField] private float bulletMoveSpeed = GameConstants.BulletSpeed;
 
     [Header("Targeting State")]
     [SerializeField] private Monster selectedTarget;
 
-    private readonly List<ActiveBullet> activeBullets = new List<ActiveBullet>();
+    private readonly List<Bullet> activeBullets = new List<Bullet>();
 
     public Monster SelectedTarget => selectedTarget;
+    public float BulletMoveSpeed => bulletMoveSpeed;
 
-    public void SetupReferences(Transform container, WaveSpawner spawner)
+    public void SetupReferences(Bullet prefab, Transform container, WaveSpawner spawner)
     {
+        bulletPrefab = prefab;
         bulletContainer = container;
         waveSpawner = spawner;
+        bulletMoveSpeed = GameConstants.BulletSpeed;
     }
 
     public void ClearAllBullets()
     {
         for (int i = activeBullets.Count - 1; i >= 0; i--)
         {
-            if (activeBullets[i].BulletObject != null)
+            if (activeBullets[i] != null)
             {
-                Destroy(activeBullets[i].BulletObject);
+                Destroy(activeBullets[i].gameObject);
             }
         }
         activeBullets.Clear();
@@ -42,29 +42,16 @@ public class CombatSystem : MonoBehaviour
 
     public void SpawnBullet(Vector2 startPosition, Vector2 aimPosition)
     {
+        if (bulletPrefab == null)
+        {
+            return;
+        }
+
         Vector2 delta = aimPosition - startPosition;
         Vector2 direction = delta.sqrMagnitude > 0.0001f ? delta.normalized : Vector2.up;
 
-        GameObject bulletObj = new GameObject("Bullet");
-        if (bulletContainer != null)
-        {
-            bulletObj.transform.SetParent(bulletContainer, false);
-        }
-        bulletObj.transform.position = new Vector3(startPosition.x, startPosition.y, 0f);
-        float diameter = GameConstants.BulletVisualRadius * 2f;
-        bulletObj.transform.localScale = new Vector3(diameter, diameter, 1f);
-
-        SpriteRenderer renderer = bulletObj.AddComponent<SpriteRenderer>();
-        renderer.sprite = ShapeSpriteHelper.GetCircleSprite(64);
-        renderer.color = new Color(1.0f, 0.92f, 0.35f, 1.0f);
-        renderer.sortingOrder = 25;
-
-        ActiveBullet bullet = new ActiveBullet
-        {
-            BulletObject = bulletObj,
-            Position = startPosition,
-            Direction = direction
-        };
+        Bullet bullet = Instantiate(bulletPrefab, bulletContainer);
+        bullet.Initialize(startPosition, direction);
         activeBullets.Add(bullet);
     }
 
@@ -87,31 +74,30 @@ public class CombatSystem : MonoBehaviour
 
         for (int i = activeBullets.Count - 1; i >= 0; i--)
         {
-            ActiveBullet bullet = activeBullets[i];
-            if (bullet.BulletObject == null)
+            Bullet bullet = activeBullets[i];
+            if (bullet == null)
             {
                 activeBullets.RemoveAt(i);
                 continue;
             }
 
             Vector2 prevPos = bullet.Position;
-            Vector2 currPos = prevPos + (bullet.Direction * (GameConstants.BulletSpeed * deltaTime));
+            Vector2 currPos = prevPos + (bullet.Direction * (bulletMoveSpeed * deltaTime));
 
             Monster firstHitMonster = FindFirstHitMonsterAlongSegment(prevPos, currPos, monsters);
             if (firstHitMonster != null)
             {
                 firstHitMonster.TakeBulletDamage(GameConstants.PlayerAttackDamage);
-                Destroy(bullet.BulletObject);
+                Destroy(bullet.gameObject);
                 activeBullets.RemoveAt(i);
                 continue;
             }
 
-            bullet.Position = currPos;
-            bullet.BulletObject.transform.position = new Vector3(currPos.x, currPos.y, 0f);
+            bullet.UpdatePosition(currPos);
 
             if (Mathf.Abs(currPos.x) > halfW || Mathf.Abs(currPos.y) > halfH)
             {
-                Destroy(bullet.BulletObject);
+                Destroy(bullet.gameObject);
                 activeBullets.RemoveAt(i);
             }
         }

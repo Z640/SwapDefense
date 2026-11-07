@@ -1,12 +1,12 @@
 using System.Collections.Generic;
-using TMPro;
 using UnityEngine;
 
 public class WaveSpawner : MonoBehaviour
 {
-    [Header("References")]
+    [Header("Prefab & System References")]
+    [SerializeField] private Monster fastMonsterPrefab;
+    [SerializeField] private Monster slowMonsterPrefab;
     [SerializeField] private Transform monsterContainer;
-    [SerializeField] private TMP_FontAsset worldFontAsset;
     [SerializeField] private GameManager gameManager;
     [SerializeField] private VFXManager vfxManager;
 
@@ -40,10 +40,11 @@ public class WaveSpawner : MonoBehaviour
 
     public IReadOnlyList<Monster> ActiveMonsters => activeMonsters;
 
-    public void SetupReferences(Transform container, TMP_FontAsset font, GameManager manager, VFXManager vfx)
+    public void SetupReferences(Monster fastPrefab, Monster slowPrefab, Transform container, GameManager manager, VFXManager vfx)
     {
+        fastMonsterPrefab = fastPrefab;
+        slowMonsterPrefab = slowPrefab;
         monsterContainer = container;
-        worldFontAsset = font;
         gameManager = manager;
         vfxManager = vfx;
     }
@@ -162,17 +163,18 @@ public class WaveSpawner : MonoBehaviour
 
     public Monster SpawnEnemy(EnemyType enemyType, Vector2 spawnPosition)
     {
+        Monster prefabToUse = enemyType == EnemyType.Fast ? fastMonsterPrefab : slowMonsterPrefab;
+        if (prefabToUse == null)
+        {
+            return null;
+        }
+
         int id = nextSpawnId;
         nextSpawnId++;
 
-        GameObject monsterObj = new GameObject($"Monster_{enemyType}_{id}");
-        if (monsterContainer != null)
-        {
-            monsterObj.transform.SetParent(monsterContainer, false);
-        }
-
-        Monster monster = monsterObj.AddComponent<Monster>();
-        monster.Initialize(enemyType, id, spawnPosition, worldFontAsset, gameManager, vfxManager);
+        Monster monster = Instantiate(prefabToUse, monsterContainer);
+        monster.name = $"Monster_{enemyType}_{id}";
+        monster.Initialize(enemyType, id, spawnPosition, gameManager, vfxManager);
         activeMonsters.Add(monster);
         return monster;
     }

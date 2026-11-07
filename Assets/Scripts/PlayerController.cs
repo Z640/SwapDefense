@@ -8,6 +8,10 @@ public class PlayerController : MonoBehaviour
     [SerializeField] private float fireCooldownTimer;
     [SerializeField] private float swapCooldownTimer;
 
+    [Header("Aim Responsiveness")]
+    [SerializeField] private bool instantAimSync = true;
+    [SerializeField] private float aimRotationLerpSpeed = GameConstants.DefaultAimRotationLerpSpeed;
+
     [Header("References")]
     [SerializeField] private Camera mainCamera;
     [SerializeField] private CombatSystem combatSystem;
@@ -18,11 +22,13 @@ public class PlayerController : MonoBehaviour
     [SerializeField] private LineRenderer aimLineRenderer;
 
     private Vector2 currentAimWorldPos;
+    private float currentAimAngleDeg = 90f;
 
     public float CurrentHealth => currentHealth;
     public float SwapCooldownRemaining => Mathf.Max(0f, swapCooldownTimer);
     public bool IsSwapReady => swapCooldownTimer <= 0f;
     public Vector2 CurrentAimWorldPos => currentAimWorldPos;
+    public float AimRotationLerpSpeed => aimRotationLerpSpeed;
 
     public void SetupReferences(Camera cam, CombatSystem combat, GameManager manager, VFXManager vfx, Transform reticleTransform, SpriteRenderer reticleRenderer, LineRenderer aimLine)
     {
@@ -33,6 +39,8 @@ public class PlayerController : MonoBehaviour
         aimReticleTransform = reticleTransform;
         aimReticleRenderer = reticleRenderer;
         aimLineRenderer = aimLine;
+        instantAimSync = true;
+        aimRotationLerpSpeed = GameConstants.DefaultAimRotationLerpSpeed;
     }
 
     public void ResetPlayer()
@@ -42,7 +50,8 @@ public class PlayerController : MonoBehaviour
         swapCooldownTimer = 0f;
         transform.position = new Vector3(GameConstants.PlayerPosX, GameConstants.PlayerPosY, 0f);
         currentAimWorldPos = new Vector2(0f, 0f);
-        UpdateAimVisuals(false);
+        currentAimAngleDeg = 90f;
+        UpdateAimVisuals(false, 0f);
     }
 
     public void TickPlayer(float deltaTime)
@@ -84,7 +93,7 @@ public class PlayerController : MonoBehaviour
         }
 
         bool hasTarget = combatSystem != null && combatSystem.SelectedTarget != null;
-        UpdateAimVisuals(hasTarget);
+        UpdateAimVisuals(hasTarget, deltaTime);
 
         // 5. Handle F (Fire) and Q (Swap) inputs
         HandleCombatInputs();
@@ -105,8 +114,25 @@ public class PlayerController : MonoBehaviour
         }
     }
 
-    private void UpdateAimVisuals(bool hasTarget)
+    private void UpdateAimVisuals(bool hasTarget, float deltaTime)
     {
+        Vector2 playerPos = transform.position;
+        Vector2 toAim = currentAimWorldPos - playerPos;
+        float aimDistance = toAim.magnitude;
+        float targetAngleDeg = aimDistance > 0.001f
+            ? Mathf.Atan2(toAim.y, toAim.x) * Mathf.Rad2Deg
+            : currentAimAngleDeg;
+
+        if (instantAimSync || deltaTime <= 0f || aimRotationLerpSpeed >= 100f)
+        {
+            currentAimAngleDeg = targetAngleDeg;
+        }
+        else
+        {
+            float t = 1f - Mathf.Exp(-aimRotationLerpSpeed * deltaTime);
+            currentAimAngleDeg = Mathf.LerpAngle(currentAimAngleDeg, targetAngleDeg, t);
+        }
+
         if (aimReticleTransform != null)
         {
             aimReticleTransform.position = new Vector3(currentAimWorldPos.x, currentAimWorldPos.y, 0f);
@@ -122,7 +148,17 @@ public class PlayerController : MonoBehaviour
         if (aimLineRenderer != null)
         {
             aimLineRenderer.SetPosition(0, transform.position);
-            aimLineRenderer.SetPosition(1, new Vector3(currentAimWorldPos.x, currentAimWorldPos.y, 0f));
+            if (instantAimSync)
+            {
+                aimLineRenderer.SetPosition(1, new Vector3(currentAimWorldPos.x, currentAimWorldPos.y, 0f));
+            }
+            else
+            {
+                float rad = currentAimAngleDeg * Mathf.Deg2Rad;
+                Vector2 dir = new Vector2(Mathf.Cos(rad), Mathf.Sin(rad));
+                Vector2 lineEnd = playerPos + (dir * aimDistance);
+                aimLineRenderer.SetPosition(1, new Vector3(lineEnd.x, lineEnd.y, 0f));
+            }
         }
     }
 
@@ -156,7 +192,16 @@ public class PlayerController : MonoBehaviour
         }
 
         Vector2 playerPos = transform.position;
-        combatSystem.SpawnBullet(playerPos, currentAimWorldPos);
+        if (instantAimSync)
+        {
+            combatSystem.SpawnBullet(playerPos, currentAimWorldPos);
+        }
+        else
+        {
+            float rad = currentAimAngleDeg * Mathf.Deg2Rad;
+            Vector2 dir = new Vector2(Mathf.Cos(rad), Mathf.Sin(rad));
+            combatSystem.SpawnBullet(playerPos, playerPos + (dir * 500f));
+        }
     }
 
     public bool TrySwapHealth()

@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
+using UnityEngine.SceneManagement;
 
 public enum GameState
 {
@@ -11,8 +12,12 @@ public enum GameState
 
 public class GameManager : MonoBehaviour
 {
+    [Header("Scene & Startup Settings")]
+    [SerializeField] private bool startImmediatelyOnLoad = true;
+    [SerializeField] private string mainMenuSceneName = "StartMenuScene";
+
     [Header("Game State")]
-    [SerializeField] private GameState currentState = GameState.Title;
+    [SerializeField] private GameState currentState = GameState.Playing;
     [SerializeField] private float survivalTime;
     [SerializeField] private int killCount;
 
@@ -34,6 +39,8 @@ public class GameManager : MonoBehaviour
         combatSystem = combat;
         uiManager = ui;
         vfxManager = vfx;
+        startImmediatelyOnLoad = true;
+        mainMenuSceneName = "StartMenuScene";
     }
 
     private void Start()
@@ -42,7 +49,15 @@ public class GameManager : MonoBehaviour
         {
             uiManager.BindButtons(this);
         }
-        EnterTitleState();
+
+        if (startImmediatelyOnLoad)
+        {
+            StartGame();
+        }
+        else
+        {
+            EnterTitleState();
+        }
     }
 
     private void Update()
@@ -198,6 +213,15 @@ public class GameManager : MonoBehaviour
     public void RestartGame()
     {
         StartGame();
+    }
+
+    public void ReturnToMainMenu()
+    {
+        Time.timeScale = 1f;
+        if (!string.IsNullOrEmpty(mainMenuSceneName))
+        {
+            SceneManager.LoadScene(mainMenuSceneName);
+        }
     }
 
     public void TriggerGameOver()

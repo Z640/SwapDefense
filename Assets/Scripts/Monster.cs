@@ -17,7 +17,11 @@ public class Monster : MonoBehaviour
     [SerializeField] private bool isSelected;
     [SerializeField] private bool isDead;
 
-    [Header("Visual References")]
+    [Header("Hitbox & Selection Tuning")]
+    [SerializeField] private float hitboxRadiusMultiplier = GameConstants.DefaultHitboxMultiplier;
+    [SerializeField] private CircleCollider2D hitCollider;
+
+    [Header("Prefab Visual References")]
     [SerializeField] private SpriteRenderer bodyRenderer;
     [SerializeField] private SpriteRenderer outlineRenderer;
     [SerializeField] private SpriteRenderer healthBarBgRenderer;
@@ -27,10 +31,12 @@ public class Monster : MonoBehaviour
     [SerializeField] private LineRenderer dashDirectionLine;
     [SerializeField] private TrailRenderer dashTrail;
 
-    private Color baseBodyColor;
+    [Header("Health Bar Layout")]
+    [SerializeField] private float healthBarMaxWidth = 42f;
+    [SerializeField] private float healthBarHeight = 5f;
+    [SerializeField] private Color baseBodyColor = Color.white;
+
     private float hitFlashTimer;
-    private float healthBarMaxWidth = 42f;
-    private float healthBarHeight = 5f;
     private GameManager gameManager;
     private VFXManager vfxManager;
 
@@ -40,18 +46,33 @@ public class Monster : MonoBehaviour
     public bool IsDashing => isDashing;
     public bool IsSelected => isSelected;
     public bool IsDead => isDead;
+    public float HitboxRadiusMultiplier => hitboxRadiusMultiplier;
 
     public float BodyRadius => enemyType == EnemyType.Fast
         ? GameConstants.FastEnemyBodyRadius
         : GameConstants.SlowEnemyBodyRadius;
 
-    public float HitRadius => enemyType == EnemyType.Fast
-        ? GameConstants.FastEnemyHitRadius
-        : GameConstants.SlowEnemyHitRadius;
+    public float HitRadius
+    {
+        get
+        {
+            float baseHitRadius = enemyType == EnemyType.Fast
+                ? GameConstants.FastEnemyHitRadius
+                : GameConstants.SlowEnemyHitRadius;
+            return baseHitRadius * hitboxRadiusMultiplier;
+        }
+    }
 
-    public float SelectRadius => enemyType == EnemyType.Fast
-        ? GameConstants.FastEnemySelectRadius
-        : GameConstants.SlowEnemySelectRadius;
+    public float SelectRadius
+    {
+        get
+        {
+            float baseSelectRadius = enemyType == EnemyType.Fast
+                ? GameConstants.FastEnemySelectRadius
+                : GameConstants.SlowEnemySelectRadius;
+            return baseSelectRadius * hitboxRadiusMultiplier;
+        }
+    }
 
     public float MoveSpeed
     {
@@ -69,7 +90,39 @@ public class Monster : MonoBehaviour
 
     public string KoreanTypeName => enemyType == EnemyType.Fast ? "빠른 적" : "느린 적";
 
-    public void Initialize(EnemyType type, int id, Vector2 spawnPosition, TMP_FontAsset fontAsset, GameManager manager, VFXManager vfx)
+    public void SetupPrefabReferences(
+        EnemyType presetType,
+        CircleCollider2D colliderComponent,
+        SpriteRenderer body,
+        SpriteRenderer outline,
+        SpriteRenderer barBg,
+        SpriteRenderer barFill,
+        TextMeshPro hpTmp,
+        TextMeshPro dashTmp,
+        LineRenderer dashLine,
+        TrailRenderer trail,
+        float barMaxWidth,
+        float barHeight,
+        Color defaultBodyColor)
+    {
+        enemyType = presetType;
+        hitCollider = colliderComponent;
+        bodyRenderer = body;
+        outlineRenderer = outline;
+        healthBarBgRenderer = barBg;
+        healthBarFillRenderer = barFill;
+        healthText = hpTmp;
+        dashDamageText = dashTmp;
+        dashDirectionLine = dashLine;
+        dashTrail = trail;
+        healthBarMaxWidth = barMaxWidth;
+        healthBarHeight = barHeight;
+        baseBodyColor = defaultBodyColor;
+        hitboxRadiusMultiplier = GameConstants.DefaultHitboxMultiplier;
+        SyncColliderRadius();
+    }
+
+    public void Initialize(EnemyType type, int id, Vector2 spawnPosition, GameManager manager, VFXManager vfx)
     {
         enemyType = type;
         spawnId = id;
@@ -86,126 +139,34 @@ public class Monster : MonoBehaviour
         isDead = false;
         hitFlashTimer = 0f;
 
-        BuildVisualHierarchy(fontAsset);
+        SyncColliderRadius();
+
+        if (dashTrail != null)
+        {
+            dashTrail.Clear();
+            dashTrail.emitting = false;
+        }
+
+        if (dashDirectionLine != null)
+        {
+            dashDirectionLine.enabled = false;
+        }
+
+        if (outlineRenderer != null)
+        {
+            outlineRenderer.enabled = false;
+        }
+
         UpdateVisualState();
     }
 
-    private void BuildVisualHierarchy(TMP_FontAsset fontAsset)
+    private void SyncColliderRadius()
     {
-        float diameter = BodyRadius * 2f;
-        healthBarMaxWidth = enemyType == EnemyType.Fast ? 36f : 48f;
-
-        // 1. Body Renderer
-        GameObject bodyObj = new GameObject("Body");
-        bodyObj.transform.SetParent(transform, false);
-        bodyObj.transform.localScale = new Vector3(diameter, diameter, 1f);
-        bodyRenderer = bodyObj.AddComponent<SpriteRenderer>();
-        bodyRenderer.sortingOrder = 10;
-
-        if (enemyType == EnemyType.Fast)
+        if (hitCollider != null)
         {
-            bodyRenderer.sprite = ShapeSpriteHelper.GetDiamondSprite(128, false);
-            baseBodyColor = new Color(1.0f, 0.55f, 0.15f, 1.0f); // Orange diamond
+            hitCollider.isTrigger = true;
+            hitCollider.radius = HitRadius;
         }
-        else
-        {
-            bodyRenderer.sprite = ShapeSpriteHelper.GetHexagonSprite(128, false);
-            baseBodyColor = new Color(0.65f, 0.32f, 0.92f, 1.0f); // Purple hexagon
-        }
-        bodyRenderer.color = baseBodyColor;
-
-        // 2. Outline Renderer (Mint selection or Red dash)
-        GameObject outlineObj = new GameObject("Outline");
-        outlineObj.transform.SetParent(transform, false);
-        float outlineDiameter = diameter + 10f;
-        outlineObj.transform.localScale = new Vector3(outlineDiameter, outlineDiameter, 1f);
-        outlineRenderer = outlineObj.AddComponent<SpriteRenderer>();
-        outlineRenderer.sortingOrder = 11;
-        outlineRenderer.sprite = enemyType == EnemyType.Fast
-            ? ShapeSpriteHelper.GetDiamondSprite(128, true, 0.22f)
-            : ShapeSpriteHelper.GetHexagonSprite(128, true, 0.20f);
-        outlineRenderer.enabled = false;
-
-        // 3. Health Bar Background
-        float barOffsetY = BodyRadius + 11f;
-        GameObject barBgObj = new GameObject("HealthBarBg");
-        barBgObj.transform.SetParent(transform, false);
-        barBgObj.transform.localPosition = new Vector3(0f, barOffsetY, 0f);
-        barBgObj.transform.localScale = new Vector3(healthBarMaxWidth + 2f, healthBarHeight + 2f, 1f);
-        healthBarBgRenderer = barBgObj.AddComponent<SpriteRenderer>();
-        healthBarBgRenderer.sprite = ShapeSpriteHelper.GetSquareSprite();
-        healthBarBgRenderer.color = new Color(0.08f, 0.10f, 0.14f, 0.90f);
-        healthBarBgRenderer.sortingOrder = 14;
-
-        // 4. Health Bar Fill
-        GameObject barFillObj = new GameObject("HealthBarFill");
-        barFillObj.transform.SetParent(transform, false);
-        barFillObj.transform.localPosition = new Vector3(0f, barOffsetY, 0f);
-        barFillObj.transform.localScale = new Vector3(healthBarMaxWidth, healthBarHeight, 1f);
-        healthBarFillRenderer = barFillObj.AddComponent<SpriteRenderer>();
-        healthBarFillRenderer.sprite = ShapeSpriteHelper.GetSquareSprite();
-        healthBarFillRenderer.color = baseBodyColor;
-        healthBarFillRenderer.sortingOrder = 15;
-
-        // 5. Ceiling Integer Health Text above health bar
-        GameObject hpTextObj = new GameObject("HealthText");
-        hpTextObj.transform.SetParent(transform, false);
-        hpTextObj.transform.localPosition = new Vector3(0f, barOffsetY + 13f, 0f);
-        healthText = hpTextObj.AddComponent<TextMeshPro>();
-        if (fontAsset != null)
-        {
-            healthText.font = fontAsset;
-        }
-        healthText.fontSize = 140f;
-        healthText.alignment = TextAlignmentOptions.Center;
-        healthText.color = new Color(0.95f, 0.97f, 1.0f, 1.0f);
-        healthText.sortingOrder = 20;
-        RectTransform hpRect = healthText.GetComponent<RectTransform>();
-        hpRect.sizeDelta = new Vector2(100f, 24f);
-
-        // 6. Dash Expected Arrival Damage Text
-        GameObject dashTextObj = new GameObject("DashDamageText");
-        dashTextObj.transform.SetParent(transform, false);
-        dashTextObj.transform.localPosition = new Vector3(BodyRadius + 78f, 0f, 0f);
-        dashDamageText = dashTextObj.AddComponent<TextMeshPro>();
-        if (fontAsset != null)
-        {
-            dashDamageText.font = fontAsset;
-        }
-        dashDamageText.fontSize = 120f;
-        dashDamageText.alignment = TextAlignmentOptions.Left;
-        dashDamageText.color = new Color(1.0f, 0.32f, 0.36f, 1.0f);
-        dashDamageText.sortingOrder = 20;
-        RectTransform dashRect = dashDamageText.GetComponent<RectTransform>();
-        dashRect.sizeDelta = new Vector2(140f, 26f);
-        dashDamageText.gameObject.SetActive(false);
-
-        // 7. Dash Direction Line toward Defense Line
-        GameObject lineObj = new GameObject("DashDirectionLine");
-        lineObj.transform.SetParent(transform, false);
-        dashDirectionLine = lineObj.AddComponent<LineRenderer>();
-        dashDirectionLine.material = ShapeSpriteHelper.GetLineMaterial();
-        dashDirectionLine.positionCount = 2;
-        dashDirectionLine.startWidth = 2.0f;
-        dashDirectionLine.endWidth = 2.0f;
-        dashDirectionLine.useWorldSpace = true;
-        dashDirectionLine.sortingOrder = 5;
-        dashDirectionLine.startColor = new Color(1.0f, 0.25f, 0.30f, 0.70f);
-        dashDirectionLine.endColor = new Color(1.0f, 0.25f, 0.30f, 0.15f);
-        dashDirectionLine.enabled = false;
-
-        // 8. Dash Trail
-        GameObject trailObj = new GameObject("DashTrail");
-        trailObj.transform.SetParent(transform, false);
-        dashTrail = trailObj.AddComponent<TrailRenderer>();
-        dashTrail.material = ShapeSpriteHelper.GetLineMaterial();
-        dashTrail.time = 0.28f;
-        dashTrail.startWidth = diameter * 0.65f;
-        dashTrail.endWidth = 2.0f;
-        dashTrail.sortingOrder = 4;
-        dashTrail.startColor = new Color(1.0f, 0.25f, 0.30f, 0.50f);
-        dashTrail.endColor = new Color(1.0f, 0.25f, 0.30f, 0.0f);
-        dashTrail.emitting = false;
     }
 
     public void TickMonster(float deltaTime, PlayerController playerController)
@@ -394,12 +355,12 @@ public class Monster : MonoBehaviour
         if (isSelected)
         {
             outlineRenderer.enabled = true;
-            outlineRenderer.color = new Color(0.20f, 1.0f, 0.82f, 1.0f); // Mint
+            outlineRenderer.color = new Color(0.20f, 1.0f, 0.82f, 1.0f);
         }
         else if (isDashing)
         {
             outlineRenderer.enabled = true;
-            outlineRenderer.color = new Color(1.0f, 0.22f, 0.28f, 0.95f); // Red
+            outlineRenderer.color = new Color(1.0f, 0.22f, 0.28f, 0.95f);
         }
         else
         {

@@ -36,6 +36,8 @@ public class UIManager : MonoBehaviour
     [SerializeField] private UnityEngine.UI.Button startButton;
     [SerializeField] private UnityEngine.UI.Button resumeButton;
     [SerializeField] private UnityEngine.UI.Button restartButton;
+    [SerializeField] private UnityEngine.UI.Button pauseMainMenuButton;
+    [SerializeField] private UnityEngine.UI.Button gameOverMainMenuButton;
 
     public void SetupReferences(
         TMP_Text hpText,
@@ -57,7 +59,9 @@ public class UIManager : MonoBehaviour
         TMP_Text finalKills,
         UnityEngine.UI.Button startBtn,
         UnityEngine.UI.Button resumeBtn,
-        UnityEngine.UI.Button restartBtn)
+        UnityEngine.UI.Button restartBtn,
+        UnityEngine.UI.Button pauseMenuBtn = null,
+        UnityEngine.UI.Button gameOverMenuBtn = null)
     {
         playerHealthText = hpText;
         playerHealthBarFill = hpFill;
@@ -79,6 +83,8 @@ public class UIManager : MonoBehaviour
         startButton = startBtn;
         resumeButton = resumeBtn;
         restartButton = restartBtn;
+        pauseMainMenuButton = pauseMenuBtn;
+        gameOverMainMenuButton = gameOverMenuBtn;
     }
 
     public void BindButtons(GameManager gameManager)
@@ -104,6 +110,18 @@ public class UIManager : MonoBehaviour
         {
             restartButton.onClick.RemoveAllListeners();
             restartButton.onClick.AddListener(gameManager.RestartGame);
+        }
+
+        if (pauseMainMenuButton != null)
+        {
+            pauseMainMenuButton.onClick.RemoveAllListeners();
+            pauseMainMenuButton.onClick.AddListener(gameManager.ReturnToMainMenu);
+        }
+
+        if (gameOverMainMenuButton != null)
+        {
+            gameOverMainMenuButton.onClick.RemoveAllListeners();
+            gameOverMainMenuButton.onClick.AddListener(gameManager.ReturnToMainMenu);
         }
     }
 
