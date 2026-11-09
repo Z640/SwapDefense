@@ -7,6 +7,7 @@ public class PlayerController : MonoBehaviour
     [SerializeField] private float currentHealth = GameConstants.PlayerStartHealth;
     [SerializeField] private float fireCooldownTimer;
     [SerializeField] private float swapCooldownTimer;
+    [SerializeField] private bool hasBreakthroughDecayPenalty;
 
     [Header("Aim Responsiveness")]
     [SerializeField] private bool instantAimSync = true;
@@ -17,6 +18,7 @@ public class PlayerController : MonoBehaviour
     [SerializeField] private CombatSystem combatSystem;
     [SerializeField] private GameManager gameManager;
     [SerializeField] private VFXManager vfxManager;
+    [SerializeField] private AbilitySwapSystem abilitySwapSystem;
     [SerializeField] private Transform aimReticleTransform;
     [SerializeField] private SpriteRenderer aimReticleRenderer;
     [SerializeField] private LineRenderer aimLineRenderer;
@@ -27,10 +29,36 @@ public class PlayerController : MonoBehaviour
     public float CurrentHealth => currentHealth;
     public float SwapCooldownRemaining => Mathf.Max(0f, swapCooldownTimer);
     public bool IsSwapReady => swapCooldownTimer <= 0f;
+    public bool HasBreakthroughDecayPenalty => hasBreakthroughDecayPenalty;
     public Vector2 CurrentAimWorldPos => currentAimWorldPos;
     public float AimRotationLerpSpeed => aimRotationLerpSpeed;
 
-    public void SetupReferences(Camera cam, CombatSystem combat, GameManager manager, VFXManager vfx, Transform reticleTransform, SpriteRenderer reticleRenderer, LineRenderer aimLine)
+    public float CurrentHealthDecayRate
+    {
+        get
+        {
+            float baseRate = abilitySwapSystem != null
+                ? abilitySwapSystem.GetBasePlayerHealthDecayRate()
+                : GameConstants.PlayerHealthDecayPerSecond;
+
+            bool monsterHasBreakthrough = abilitySwapSystem != null && abilitySwapSystem.DoesMonsterArrivalDoublePlayerDecay();
+            if (hasBreakthroughDecayPenalty && monsterHasBreakthrough)
+            {
+                return baseRate * GameConstants.BreakthroughMonsterDecayPenaltyMultiplier;
+            }
+            return baseRate;
+        }
+    }
+
+    public void SetupReferences(
+        Camera cam,
+        CombatSystem combat,
+        GameManager manager,
+        VFXManager vfx,
+        Transform reticleTransform,
+        SpriteRenderer reticleRenderer,
+        LineRenderer aimLine,
+        AbilitySwapSystem swapSystem = null)
     {
         mainCamera = cam;
         combatSystem = combat;
@@ -39,6 +67,7 @@ public class PlayerController : MonoBehaviour
         aimReticleTransform = reticleTransform;
         aimReticleRenderer = reticleRenderer;
         aimLineRenderer = aimLine;
+        abilitySwapSystem = swapSystem;
         instantAimSync = true;
         aimRotationLerpSpeed = GameConstants.DefaultAimRotationLerpSpeed;
     }
@@ -48,6 +77,7 @@ public class PlayerController : MonoBehaviour
         currentHealth = GameConstants.PlayerStartHealth;
         fireCooldownTimer = 0f;
         swapCooldownTimer = 0f;
+        hasBreakthroughDecayPenalty = false;
         transform.position = new Vector3(GameConstants.PlayerPosX, GameConstants.PlayerPosY, 0f);
         currentAimWorldPos = new Vector2(0f, 0f);
         currentAimAngleDeg = 90f;
@@ -61,8 +91,9 @@ public class PlayerController : MonoBehaviour
             return;
         }
 
-        // 1. Continuous health decay (3.0 per second)
-        currentHealth = Mathf.Clamp(currentHealth - (GameConstants.PlayerHealthDecayPerSecond * deltaTime), 0f, GameConstants.PlayerMaxHealth);
+        // 1. Continuous health decay (adjusted by ArmorReinforce & BreakthroughImpact)
+        float decayRate = CurrentHealthDecayRate;
+        currentHealth = Mathf.Clamp(currentHealth - (decayRate * deltaTime), 0f, GameConstants.PlayerMaxHealth);
         if (currentHealth <= 0f)
         {
             currentHealth = 0f;
@@ -123,13 +154,18 @@ public class PlayerController : MonoBehaviour
             ? Mathf.Atan2(toAim.y, toAim.x) * Mathf.Rad2Deg
             : currentAimAngleDeg;
 
-        if (instantAimSync || deltaTime <= 0f || aimRotationLerpSpeed >= 100f)
+        float aimMultiplier = abilitySwapSystem != null
+            ? abilitySwapSystem.GetPlayerAimSpeedMultiplier()
+            : 1f;
+        float effectiveLerpSpeed = aimRotationLerpSpeed * aimMultiplier;
+
+        if (instantAimSync || deltaTime <= 0f || effectiveLerpSpeed >= 100f)
         {
             currentAimAngleDeg = targetAngleDeg;
         }
         else
         {
-            float t = 1f - Mathf.Exp(-aimRotationLerpSpeed * deltaTime);
+            float t = 1f - Mathf.Exp(-effectiveLerpSpeed * deltaTime);
             currentAimAngleDeg = Mathf.LerpAngle(currentAimAngleDeg, targetAngleDeg, t);
         }
 
@@ -148,7 +184,7 @@ public class PlayerController : MonoBehaviour
         if (aimLineRenderer != null)
         {
             aimLineRenderer.SetPosition(0, transform.position);
-            if (instantAimSync)
+            if (instantAimSync || effectiveLerpSpeed >= 100f)
             {
                 aimLineRenderer.SetPosition(1, new Vector3(currentAimWorldPos.x, currentAimWorldPos.y, 0f));
             }
@@ -169,12 +205,14 @@ public class PlayerController : MonoBehaviour
             return;
         }
 
-        // F key: Single shot or Hold continuous fire every 0.25s
+        // F key: Single shot or Hold continuous fire
         bool isFirePressed = Keyboard.current.fKey.isPressed;
         if (isFirePressed && fireCooldownTimer <= 0f)
         {
             FireBullet();
-            fireCooldownTimer = GameConstants.PlayerFireInterval;
+            fireCooldownTimer = abilitySwapSystem != null
+                ? abilitySwapSystem.GetPlayerFireInterval()
+                : GameConstants.PlayerFireInterval;
         }
 
         // Q key: Swap health with currently selected monster
@@ -191,8 +229,13 @@ public class PlayerController : MonoBehaviour
             return;
         }
 
+        float aimMultiplier = abilitySwapSystem != null
+            ? abilitySwapSystem.GetPlayerAimSpeedMultiplier()
+            : 1f;
+        float effectiveLerpSpeed = aimRotationLerpSpeed * aimMultiplier;
+
         Vector2 playerPos = transform.position;
-        if (instantAimSync)
+        if (instantAimSync || effectiveLerpSpeed >= 100f)
         {
             combatSystem.SpawnBullet(playerPos, currentAimWorldPos);
         }
@@ -256,6 +299,28 @@ public class PlayerController : MonoBehaviour
         }
 
         return true;
+    }
+
+    public void HealHealth(float healAmount)
+    {
+        if (currentHealth <= 0f || healAmount <= 0f)
+        {
+            return;
+        }
+
+        currentHealth = Mathf.Clamp(currentHealth + healAmount, 0f, GameConstants.PlayerMaxHealth);
+    }
+
+    public void ActivateBreakthroughDecayPenalty()
+    {
+        if (!hasBreakthroughDecayPenalty)
+        {
+            hasBreakthroughDecayPenalty = true;
+            if (vfxManager != null)
+            {
+                vfxManager.ShowSystemNotice("[몬스터 돌파 충격] 방어선 피격! 플레이어 체력 지속 감소치 2배 적용!");
+            }
+        }
     }
 
     public void TakeDamage(float damageAmount)

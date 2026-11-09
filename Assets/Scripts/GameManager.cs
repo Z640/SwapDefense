@@ -7,6 +7,8 @@ public enum GameState
     Title,
     Playing,
     Paused,
+    AbilitySwap,
+    ResumeCountdown,
     GameOver
 }
 
@@ -19,6 +21,8 @@ public class GameManager : MonoBehaviour
     [Header("Game State")]
     [SerializeField] private GameState currentState = GameState.Playing;
     [SerializeField] private float survivalTime;
+    [SerializeField] private float nextAbilitySwapTime = GameConstants.AbilitySwapCycleInterval;
+    [SerializeField] private float resumeCountdownTimer;
     [SerializeField] private int killCount;
 
     [Header("System References")]
@@ -27,18 +31,33 @@ public class GameManager : MonoBehaviour
     [SerializeField] private CombatSystem combatSystem;
     [SerializeField] private UIManager uiManager;
     [SerializeField] private VFXManager vfxManager;
+    [SerializeField] private AbilitySwapSystem abilitySwapSystem;
 
     public GameState CurrentState => currentState;
     public float SurvivalTime => survivalTime;
+    public float NextAbilitySwapTime => nextAbilitySwapTime;
+    public float ResumeCountdownTimer => resumeCountdownTimer;
     public int KillCount => killCount;
+    public AbilitySwapSystem AbilitySwap => abilitySwapSystem;
 
-    public void SetupReferences(PlayerController player, WaveSpawner spawner, CombatSystem combat, UIManager ui, VFXManager vfx)
+    public int CurrentPhaseNumber => waveSpawner != null
+        ? waveSpawner.GetPhaseIndex(survivalTime) + 1
+        : 1;
+
+    public void SetupReferences(
+        PlayerController player,
+        WaveSpawner spawner,
+        CombatSystem combat,
+        UIManager ui,
+        VFXManager vfx,
+        AbilitySwapSystem swapSystem = null)
     {
         playerController = player;
         waveSpawner = spawner;
         combatSystem = combat;
         uiManager = ui;
         vfxManager = vfx;
+        abilitySwapSystem = swapSystem;
         startImmediatelyOnLoad = true;
         mainMenuSceneName = "StartMenuScene";
     }
@@ -64,6 +83,12 @@ public class GameManager : MonoBehaviour
     {
         HandleEscapeInput();
 
+        if (currentState == GameState.ResumeCountdown)
+        {
+            TickResumeCountdown(Time.unscaledDeltaTime);
+            return;
+        }
+
         if (currentState != GameState.Playing)
         {
             return;
@@ -88,12 +113,52 @@ public class GameManager : MonoBehaviour
             playerController.TickPlayer(deltaTime);
         }
 
+        if (currentState != GameState.Playing)
+        {
+            return;
+        }
+
         if (vfxManager != null)
         {
             vfxManager.TickVFX(deltaTime);
         }
 
         RefreshHUD();
+
+        // 생존 시간 기준 매 30.0초 주기(30s, 60s, 90s...)마다 카드 교환 팝업 발동
+        if (survivalTime >= nextAbilitySwapTime)
+        {
+            TriggerAbilitySwapEvent();
+        }
+    }
+
+    private void TickResumeCountdown(float unscaledDeltaTime)
+    {
+        resumeCountdownTimer -= unscaledDeltaTime;
+
+        if (uiManager != null)
+        {
+            uiManager.UpdateResumeCountdownDisplay(resumeCountdownTimer);
+        }
+
+        if (resumeCountdownTimer <= 0f)
+        {
+            resumeCountdownTimer = 0f;
+            currentState = GameState.Playing;
+            Time.timeScale = 1f;
+
+            if (uiManager != null)
+            {
+                uiManager.UpdatePanelVisibility(currentState);
+            }
+
+            if (vfxManager != null)
+            {
+                vfxManager.ShowSystemNotice($"Phase {CurrentPhaseNumber} 전투 재개! 다음 능력 교환까지 30.0초");
+            }
+
+            RefreshHUD();
+        }
     }
 
     private void HandleEscapeInput()
@@ -121,8 +186,14 @@ public class GameManager : MonoBehaviour
         Time.timeScale = 0f;
         currentState = GameState.Title;
         survivalTime = 0f;
+        nextAbilitySwapTime = GameConstants.AbilitySwapCycleInterval;
+        resumeCountdownTimer = 0f;
         killCount = 0;
 
+        if (abilitySwapSystem != null)
+        {
+            abilitySwapSystem.ResetAbilities();
+        }
         if (waveSpawner != null)
         {
             waveSpawner.ResetSpawner();
@@ -149,8 +220,14 @@ public class GameManager : MonoBehaviour
     public void StartGame()
     {
         survivalTime = 0f;
+        nextAbilitySwapTime = GameConstants.AbilitySwapCycleInterval;
+        resumeCountdownTimer = 0f;
         killCount = 0;
 
+        if (abilitySwapSystem != null)
+        {
+            abilitySwapSystem.ResetAbilities();
+        }
         if (waveSpawner != null)
         {
             waveSpawner.ResetSpawner();
@@ -190,6 +267,7 @@ public class GameManager : MonoBehaviour
 
         if (uiManager != null)
         {
+            uiManager.RefreshPauseAbilityStatus(abilitySwapSystem);
             uiManager.UpdatePanelVisibility(currentState);
         }
     }
@@ -208,6 +286,88 @@ public class GameManager : MonoBehaviour
         {
             uiManager.UpdatePanelVisibility(currentState);
         }
+    }
+
+    public void TriggerAbilitySwapEvent()
+    {
+        if (currentState != GameState.Playing)
+        {
+            return;
+        }
+
+        currentState = GameState.AbilitySwap;
+        Time.timeScale = 0f;
+        nextAbilitySwapTime += GameConstants.AbilitySwapCycleInterval;
+
+        if (abilitySwapSystem != null)
+        {
+            abilitySwapSystem.BeginSwapDraft();
+        }
+
+        if (uiManager != null)
+        {
+            uiManager.OpenAbilitySwapModal(abilitySwapSystem, CurrentPhaseNumber, survivalTime);
+            uiManager.UpdatePanelVisibility(currentState);
+        }
+    }
+
+    public void SelectMonsterAbilitySlot(int monsterSlotIndex)
+    {
+        if (currentState != GameState.AbilitySwap || abilitySwapSystem == null)
+        {
+            return;
+        }
+
+        if (abilitySwapSystem.SelectMonsterSlotForSwap(monsterSlotIndex))
+        {
+            if (uiManager != null)
+            {
+                uiManager.RefreshAbilitySwapModal(abilitySwapSystem);
+            }
+        }
+    }
+
+    public void InspectAbilityCardInSwapModal(bool isMonsterSide, int slotIndex)
+    {
+        if (currentState != GameState.AbilitySwap || abilitySwapSystem == null || uiManager == null)
+        {
+            return;
+        }
+
+        AbilityType ability = isMonsterSide
+            ? abilitySwapSystem.GetMonsterSlotAbility(slotIndex)
+            : abilitySwapSystem.GetPlayerSlotAbility(slotIndex);
+
+        uiManager.ShowInspectedAbilityDetail(ability);
+    }
+
+    public void ConfirmAbilitySwapAndStartCountdown()
+    {
+        if (currentState != GameState.AbilitySwap || abilitySwapSystem == null)
+        {
+            return;
+        }
+
+        if (!abilitySwapSystem.ConfirmSwap(out AbilityType acquiredByPlayer, out AbilityType takenByAi))
+        {
+            return;
+        }
+
+        if (waveSpawner != null)
+        {
+            waveSpawner.RefreshActiveMonstersForAbilityChanges();
+        }
+
+        currentState = GameState.ResumeCountdown;
+        resumeCountdownTimer = GameConstants.AbilitySwapResumeCountdown;
+
+        if (uiManager != null)
+        {
+            uiManager.ShowSwapResultAndCountdown(acquiredByPlayer, takenByAi, resumeCountdownTimer);
+            uiManager.UpdatePanelVisibility(currentState);
+        }
+
+        RefreshHUD();
     }
 
     public void RestartGame()
@@ -243,9 +403,23 @@ public class GameManager : MonoBehaviour
         }
     }
 
-    public void AddKillCount()
+    public void NotifyMonsterKilledByPlayer()
     {
         killCount++;
+
+        if (abilitySwapSystem != null && playerController != null)
+        {
+            float killHeal = abilitySwapSystem.GetPlayerKillHealAmount();
+            if (killHeal > 0f)
+            {
+                playerController.HealHealth(killHeal);
+            }
+        }
+    }
+
+    public void AddKillCount()
+    {
+        NotifyMonsterKilledByPlayer();
     }
 
     private void RefreshHUD()
@@ -258,7 +432,10 @@ public class GameManager : MonoBehaviour
         Monster selected = combatSystem != null ? combatSystem.SelectedTarget : null;
         uiManager.UpdateHUD(
             playerController.CurrentHealth,
+            playerController.CurrentHealthDecayRate,
             survivalTime,
+            nextAbilitySwapTime,
+            CurrentPhaseNumber,
             killCount,
             playerController.SwapCooldownRemaining,
             selected

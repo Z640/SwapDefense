@@ -13,6 +13,7 @@ public class Monster : MonoBehaviour
     [SerializeField] private EnemyType enemyType;
     [SerializeField] private int spawnId;
     [SerializeField] private float currentHealth;
+    [SerializeField] private float maxHealth = GameConstants.EnemyMaxHealth;
     [SerializeField] private bool isDashing;
     [SerializeField] private bool isSelected;
     [SerializeField] private bool isDead;
@@ -39,10 +40,12 @@ public class Monster : MonoBehaviour
     private float hitFlashTimer;
     private GameManager gameManager;
     private VFXManager vfxManager;
+    private AbilitySwapSystem abilitySwapSystem;
 
     public EnemyType Type => enemyType;
     public int SpawnId => spawnId;
     public float CurrentHealth => currentHealth;
+    public float MaxHealth => maxHealth;
     public bool IsDashing => isDashing;
     public bool IsSelected => isSelected;
     public bool IsDead => isDead;
@@ -59,7 +62,10 @@ public class Monster : MonoBehaviour
             float baseHitRadius = enemyType == EnemyType.Fast
                 ? GameConstants.FastEnemyHitRadius
                 : GameConstants.SlowEnemyHitRadius;
-            return baseHitRadius * hitboxRadiusMultiplier;
+            float abilityScale = abilitySwapSystem != null
+                ? abilitySwapSystem.GetMonsterHitboxScaleMultiplier()
+                : 1f;
+            return baseHitRadius * hitboxRadiusMultiplier * abilityScale;
         }
     }
 
@@ -70,7 +76,10 @@ public class Monster : MonoBehaviour
             float baseSelectRadius = enemyType == EnemyType.Fast
                 ? GameConstants.FastEnemySelectRadius
                 : GameConstants.SlowEnemySelectRadius;
-            return baseSelectRadius * hitboxRadiusMultiplier;
+            float abilityScale = abilitySwapSystem != null
+                ? abilitySwapSystem.GetMonsterHitboxScaleMultiplier()
+                : 1f;
+            return baseSelectRadius * hitboxRadiusMultiplier * abilityScale;
         }
     }
 
@@ -78,13 +87,18 @@ public class Monster : MonoBehaviour
     {
         get
         {
+            float speedMultiplier = abilitySwapSystem != null
+                ? abilitySwapSystem.GetMonsterMoveSpeedMultiplier()
+                : 1f;
+
             if (isDashing)
             {
-                return GameConstants.EnemyDashSpeed;
+                return GameConstants.EnemyDashSpeed * speedMultiplier;
             }
-            return enemyType == EnemyType.Fast
+            float baseSpeed = enemyType == EnemyType.Fast
                 ? GameConstants.FastEnemyMoveSpeed
                 : GameConstants.SlowEnemyMoveSpeed;
+            return baseSpeed * speedMultiplier;
         }
     }
 
@@ -122,17 +136,30 @@ public class Monster : MonoBehaviour
         SyncColliderRadius();
     }
 
-    public void Initialize(EnemyType type, int id, Vector2 spawnPosition, GameManager manager, VFXManager vfx)
+    public void Initialize(
+        EnemyType type,
+        int id,
+        Vector2 spawnPosition,
+        GameManager manager,
+        VFXManager vfx,
+        AbilitySwapSystem swapSystem = null)
     {
         enemyType = type;
         spawnId = id;
         transform.position = new Vector3(spawnPosition.x, spawnPosition.y, 0f);
         gameManager = manager;
         vfxManager = vfx;
+        abilitySwapSystem = swapSystem;
 
-        currentHealth = enemyType == EnemyType.Fast
+        float hpMultiplier = abilitySwapSystem != null
+            ? abilitySwapSystem.GetMonsterHealthMultiplier()
+            : 1f;
+
+        maxHealth = GameConstants.EnemyMaxHealth * hpMultiplier;
+        float baseStartHealth = enemyType == EnemyType.Fast
             ? GameConstants.FastEnemyStartHealth
             : GameConstants.SlowEnemyStartHealth;
+        currentHealth = baseStartHealth * hpMultiplier;
 
         isDashing = false;
         isSelected = false;
@@ -160,7 +187,7 @@ public class Monster : MonoBehaviour
         UpdateVisualState();
     }
 
-    private void SyncColliderRadius()
+    public void SyncColliderRadius()
     {
         if (hitCollider != null)
         {
@@ -169,12 +196,27 @@ public class Monster : MonoBehaviour
         }
     }
 
+    public float GetExpectedArrivalDamage()
+    {
+        float rawDamage = isDashing
+            ? Mathf.Max(0f, currentHealth)
+            : (enemyType == EnemyType.Fast ? GameConstants.FastEnemyArrivalDamage : GameConstants.SlowEnemyArrivalDamage);
+
+        float damageMultiplier = abilitySwapSystem != null
+            ? abilitySwapSystem.GetMonsterArrivalDamageMultiplier()
+            : 1f;
+
+        return rawDamage * damageMultiplier;
+    }
+
     public void TickMonster(float deltaTime, PlayerController playerController)
     {
         if (isDead)
         {
             return;
         }
+
+        SyncColliderRadius();
 
         if (hitFlashTimer > 0f)
         {
@@ -207,13 +249,19 @@ public class Monster : MonoBehaviour
             return;
         }
 
-        float arrivalDamage = isDashing
-            ? Mathf.Max(0f, currentHealth)
-            : (enemyType == EnemyType.Fast ? GameConstants.FastEnemyArrivalDamage : GameConstants.SlowEnemyArrivalDamage);
+        float arrivalDamage = GetExpectedArrivalDamage();
 
-        if (playerController != null && arrivalDamage > 0f)
+        if (playerController != null)
         {
-            playerController.TakeDamage(arrivalDamage);
+            if (abilitySwapSystem != null && abilitySwapSystem.DoesMonsterArrivalDoublePlayerDecay())
+            {
+                playerController.ActivateBreakthroughDecayPenalty();
+            }
+
+            if (arrivalDamage > 0f)
+            {
+                playerController.TakeDamage(arrivalDamage);
+            }
         }
 
         if (vfxManager != null)
@@ -231,7 +279,7 @@ public class Monster : MonoBehaviour
             return false;
         }
 
-        currentHealth = Mathf.Clamp(currentHealth - damageAmount, 0f, GameConstants.EnemyMaxHealth);
+        currentHealth = Mathf.Clamp(currentHealth - damageAmount, 0f, maxHealth);
         hitFlashTimer = GameConstants.HitFlashDuration;
 
         if (bodyRenderer != null)
@@ -248,7 +296,7 @@ public class Monster : MonoBehaviour
         {
             if (gameManager != null)
             {
-                gameManager.AddKillCount();
+                gameManager.NotifyMonsterKilledByPlayer();
             }
             DestroyMonster();
             return true;
@@ -265,7 +313,7 @@ public class Monster : MonoBehaviour
             return;
         }
 
-        currentHealth = Mathf.Clamp(newHealth, 0f, GameConstants.EnemyMaxHealth);
+        currentHealth = Mathf.Clamp(newHealth, 0f, maxHealth);
         isDashing = true;
 
         if (dashTrail != null)
@@ -300,7 +348,7 @@ public class Monster : MonoBehaviour
         UpdateOutlineState();
     }
 
-    private void UpdateVisualState()
+    public void UpdateVisualState()
     {
         if (isDead)
         {
@@ -312,7 +360,8 @@ public class Monster : MonoBehaviour
             bodyRenderer.color = isDashing ? new Color(1.0f, 0.36f, 0.38f, 1f) : baseBodyColor;
         }
 
-        float ratio = Mathf.Clamp01(currentHealth / GameConstants.EnemyMaxHealth);
+        float denominator = Mathf.Max(1f, maxHealth);
+        float ratio = Mathf.Clamp01(currentHealth / denominator);
         if (healthBarFillRenderer != null)
         {
             float fillWidth = healthBarMaxWidth * ratio;
@@ -336,7 +385,7 @@ public class Monster : MonoBehaviour
             dashDamageText.gameObject.SetActive(isDashing);
             if (isDashing)
             {
-                int expectedDamage = Mathf.CeilToInt(currentHealth);
+                int expectedDamage = Mathf.CeilToInt(GetExpectedArrivalDamage());
                 dashDamageText.text = $"돌진 피해 {expectedDamage}";
             }
         }

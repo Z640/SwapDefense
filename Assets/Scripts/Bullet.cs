@@ -16,11 +16,14 @@ public class Bullet : MonoBehaviour
         bulletRenderer = rendererComponent;
     }
 
-    public void Initialize(Vector2 startPosition, Vector2 moveDirection)
+    public void Initialize(Vector2 startPosition, Vector2 moveDirection, float scaleMultiplier = 1f)
     {
         position = startPosition;
         direction = moveDirection;
         transform.position = new Vector3(startPosition.x, startPosition.y, 0f);
+
+        float diameter = GameConstants.BulletVisualRadius * 2f * scaleMultiplier;
+        transform.localScale = new Vector3(diameter, diameter, 1f);
     }
 
     public void UpdatePosition(Vector2 newPosition)

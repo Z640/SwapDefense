@@ -938,6 +938,7 @@ MonoBehaviour:
   enemyType: 1
   spawnId: 0
   currentHealth: 0
+  maxHealth: 100
   isDashing: 0
   isSelected: 0
   isDead: 0

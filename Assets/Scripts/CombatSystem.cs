@@ -7,6 +7,7 @@ public class CombatSystem : MonoBehaviour
     [SerializeField] private Bullet bulletPrefab;
     [SerializeField] private Transform bulletContainer;
     [SerializeField] private WaveSpawner waveSpawner;
+    [SerializeField] private AbilitySwapSystem abilitySwapSystem;
 
     [Header("Combat Tuning")]
     [SerializeField] private float bulletMoveSpeed = GameConstants.BulletSpeed;
@@ -19,11 +20,16 @@ public class CombatSystem : MonoBehaviour
     public Monster SelectedTarget => selectedTarget;
     public float BulletMoveSpeed => bulletMoveSpeed;
 
-    public void SetupReferences(Bullet prefab, Transform container, WaveSpawner spawner)
+    public void SetupReferences(
+        Bullet prefab,
+        Transform container,
+        WaveSpawner spawner,
+        AbilitySwapSystem swapSystem = null)
     {
         bulletPrefab = prefab;
         bulletContainer = container;
         waveSpawner = spawner;
+        abilitySwapSystem = swapSystem;
         bulletMoveSpeed = GameConstants.BulletSpeed;
     }
 
@@ -50,8 +56,12 @@ public class CombatSystem : MonoBehaviour
         Vector2 delta = aimPosition - startPosition;
         Vector2 direction = delta.sqrMagnitude > 0.0001f ? delta.normalized : Vector2.up;
 
+        float scaleMultiplier = abilitySwapSystem != null
+            ? abilitySwapSystem.GetPlayerBulletScaleMultiplier()
+            : 1f;
+
         Bullet bullet = Instantiate(bulletPrefab, bulletContainer);
-        bullet.Initialize(startPosition, direction);
+        bullet.Initialize(startPosition, direction, scaleMultiplier);
         activeBullets.Add(bullet);
     }
 
@@ -72,6 +82,17 @@ public class CombatSystem : MonoBehaviour
         float halfW = (GameConstants.ScreenWidth * 0.5f) + GameConstants.BulletOutBoundsMargin;
         float halfH = (GameConstants.ScreenHeight * 0.5f) + GameConstants.BulletOutBoundsMargin;
 
+        float bulletDamage = abilitySwapSystem != null
+            ? abilitySwapSystem.GetPlayerBulletDamage()
+            : GameConstants.PlayerAttackDamage;
+
+        float bulletScale = abilitySwapSystem != null
+            ? abilitySwapSystem.GetPlayerBulletScaleMultiplier()
+            : 1f;
+        float bonusBulletHitRadius = abilitySwapSystem != null
+            ? abilitySwapSystem.GetPlayerBulletBonusHitRadius()
+            : 0f;
+
         for (int i = activeBullets.Count - 1; i >= 0; i--)
         {
             Bullet bullet = activeBullets[i];
@@ -81,13 +102,16 @@ public class CombatSystem : MonoBehaviour
                 continue;
             }
 
+            float diameter = GameConstants.BulletVisualRadius * 2f * bulletScale;
+            bullet.transform.localScale = new Vector3(diameter, diameter, 1f);
+
             Vector2 prevPos = bullet.Position;
             Vector2 currPos = prevPos + (bullet.Direction * (bulletMoveSpeed * deltaTime));
 
-            Monster firstHitMonster = FindFirstHitMonsterAlongSegment(prevPos, currPos, monsters);
+            Monster firstHitMonster = FindFirstHitMonsterAlongSegment(prevPos, currPos, monsters, bonusBulletHitRadius);
             if (firstHitMonster != null)
             {
-                firstHitMonster.TakeBulletDamage(GameConstants.PlayerAttackDamage);
+                firstHitMonster.TakeBulletDamage(bulletDamage);
                 Destroy(bullet.gameObject);
                 activeBullets.RemoveAt(i);
                 continue;
@@ -103,7 +127,11 @@ public class CombatSystem : MonoBehaviour
         }
     }
 
-    private Monster FindFirstHitMonsterAlongSegment(Vector2 prevPos, Vector2 currPos, IReadOnlyList<Monster> monsters)
+    private Monster FindFirstHitMonsterAlongSegment(
+        Vector2 prevPos,
+        Vector2 currPos,
+        IReadOnlyList<Monster> monsters,
+        float bonusBulletHitRadius)
     {
         Monster bestMonster = null;
         float bestHitFraction = float.MaxValue;
@@ -118,7 +146,7 @@ public class CombatSystem : MonoBehaviour
             }
 
             Vector2 enemyCenter = monster.transform.position;
-            float hitRadius = monster.HitRadius;
+            float hitRadius = monster.HitRadius + bonusBulletHitRadius;
 
             if (TryGetSegmentCircleFirstHit(prevPos, currPos, enemyCenter, hitRadius, out float hitFraction, out float distSq))
             {
