@@ -19,6 +19,7 @@ public class PlayerController : MonoBehaviour
     [SerializeField] private GameManager gameManager;
     [SerializeField] private VFXManager vfxManager;
     [SerializeField] private AbilitySwapSystem abilitySwapSystem;
+    [SerializeField] private AudioManager audioManager;
     [SerializeField] private Transform aimReticleTransform;
     [SerializeField] private SpriteRenderer aimReticleRenderer;
     [SerializeField] private LineRenderer aimLineRenderer;
@@ -58,7 +59,8 @@ public class PlayerController : MonoBehaviour
         Transform reticleTransform,
         SpriteRenderer reticleRenderer,
         LineRenderer aimLine,
-        AbilitySwapSystem swapSystem = null)
+        AbilitySwapSystem swapSystem = null,
+        AudioManager audio = null)
     {
         mainCamera = cam;
         combatSystem = combat;
@@ -68,6 +70,7 @@ public class PlayerController : MonoBehaviour
         aimReticleRenderer = reticleRenderer;
         aimLineRenderer = aimLine;
         abilitySwapSystem = swapSystem;
+        audioManager = audio;
         instantAimSync = true;
         aimRotationLerpSpeed = GameConstants.DefaultAimRotationLerpSpeed;
     }
@@ -244,6 +247,11 @@ public class PlayerController : MonoBehaviour
             float rad = currentAimAngleDeg * Mathf.Deg2Rad;
             Vector2 dir = new Vector2(Mathf.Cos(rad), Mathf.Sin(rad));
             combatSystem.SpawnBullet(playerPos, playerPos + (dir * 500f));
+        }
+
+        if (audioManager != null)
+        {
+            audioManager.PlayFireSfx();
         }
     }
 

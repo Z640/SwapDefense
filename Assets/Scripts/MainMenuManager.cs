@@ -4,7 +4,7 @@ using UnityEngine.SceneManagement;
 public class MainMenuManager : MonoBehaviour
 {
     [Header("Scene Settings")]
-    [SerializeField] private string gameSceneName = "SampleScene";
+    [SerializeField] private string gameSceneName = "GameScene";
 
     [Header("UI References")]
     [SerializeField] private UnityEngine.UI.Button startGameButton;

@@ -32,6 +32,7 @@ public class GameManager : MonoBehaviour
     [SerializeField] private UIManager uiManager;
     [SerializeField] private VFXManager vfxManager;
     [SerializeField] private AbilitySwapSystem abilitySwapSystem;
+    [SerializeField] private AudioManager audioManager;
 
     public GameState CurrentState => currentState;
     public float SurvivalTime => survivalTime;
@@ -50,7 +51,8 @@ public class GameManager : MonoBehaviour
         CombatSystem combat,
         UIManager ui,
         VFXManager vfx,
-        AbilitySwapSystem swapSystem = null)
+        AbilitySwapSystem swapSystem = null,
+        AudioManager audio = null)
     {
         playerController = player;
         waveSpawner = spawner;
@@ -58,6 +60,7 @@ public class GameManager : MonoBehaviour
         uiManager = ui;
         vfxManager = vfx;
         abilitySwapSystem = swapSystem;
+        audioManager = audio;
         startImmediatelyOnLoad = true;
         mainMenuSceneName = "StartMenuScene";
     }
@@ -243,6 +246,10 @@ public class GameManager : MonoBehaviour
         if (playerController != null)
         {
             playerController.ResetPlayer();
+        }
+        if (audioManager != null)
+        {
+            audioManager.PlayMainBgm();
         }
 
         currentState = GameState.Playing;
