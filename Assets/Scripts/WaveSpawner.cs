@@ -118,7 +118,7 @@ public class WaveSpawner : MonoBehaviour
         spawnTimer -= deltaTime;
         if (spawnTimer <= 0f)
         {
-            SpawnBatchForCurrentPhase(survivalTime);
+            SpawnBatchForCurrentPhase(survivalTime, playerController);
             spawnTimer += GetEffectiveSpawnInterval(survivalTime);
         }
 
@@ -235,7 +235,7 @@ public class WaveSpawner : MonoBehaviour
         return phase3Pattern;
     }
 
-    private void SpawnBatchForCurrentPhase(float survivalTime)
+    private void SpawnBatchForCurrentPhase(float survivalTime, PlayerController playerController)
     {
         int maxMonsters = GetMaxConcurrentMonsters(survivalTime);
         int availableSlots = maxMonsters - activeMonsters.Count;
@@ -269,7 +269,11 @@ public class WaveSpawner : MonoBehaviour
 
             float randomX = Random.Range(segmentMinX, segmentMaxX);
             Vector2 spawnPos = new Vector2(randomX, GameConstants.SpawnLineY);
-            SpawnEnemy(typeToSpawn, spawnPos);
+            Monster spawned = SpawnEnemy(typeToSpawn, spawnPos);
+            if (spawned != null && playerController != null)
+            {
+                spawned.UpdateHigherHealthBorder(playerController);
+            }
         }
     }
 

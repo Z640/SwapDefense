@@ -96,4 +96,8 @@ public static class GameConstants
     public const float PlayerDamageEffectDuration = 0.35f;
     public const float SwapEffectDuration = 0.8f;
     public const float SystemNoticeDuration = 1.8f;
+
+    // 플레이어 성장: 게임 페이즈가 지날 때마다(1~3페이즈 턴에만) 플레이어 공격력 증가
+    public const float PhaseAttackGrowthPerPhase = 0.05f;
+    public const int MaxPhaseAttackGrowthStage = 3;
 }

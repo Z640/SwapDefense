@@ -25,6 +25,7 @@ public class Monster : MonoBehaviour
     [Header("Prefab Visual References")]
     [SerializeField] private SpriteRenderer bodyRenderer;
     [SerializeField] private SpriteRenderer outlineRenderer;
+    [SerializeField] private SpriteRenderer healthBarBorderRenderer;
     [SerializeField] private SpriteRenderer healthBarBgRenderer;
     [SerializeField] private SpriteRenderer healthBarFillRenderer;
     [SerializeField] private TextMeshPro healthText;
@@ -38,6 +39,7 @@ public class Monster : MonoBehaviour
     [SerializeField] private Color baseBodyColor = Color.white;
 
     private float hitFlashTimer;
+    private bool hasHigherHealthThanPlayer;
     private GameManager gameManager;
     private VFXManager vfxManager;
     private AbilitySwapSystem abilitySwapSystem;
@@ -117,12 +119,14 @@ public class Monster : MonoBehaviour
         TrailRenderer trail,
         float barMaxWidth,
         float barHeight,
-        Color defaultBodyColor)
+        Color defaultBodyColor,
+        SpriteRenderer barBorder = null)
     {
         enemyType = presetType;
         hitCollider = colliderComponent;
         bodyRenderer = body;
         outlineRenderer = outline;
+        healthBarBorderRenderer = barBorder;
         healthBarBgRenderer = barBg;
         healthBarFillRenderer = barFill;
         healthText = hpTmp;
@@ -165,6 +169,7 @@ public class Monster : MonoBehaviour
         isSelected = false;
         isDead = false;
         hitFlashTimer = 0f;
+        hasHigherHealthThanPlayer = false;
 
         SyncColliderRadius();
 
@@ -182,6 +187,11 @@ public class Monster : MonoBehaviour
         if (outlineRenderer != null)
         {
             outlineRenderer.enabled = false;
+        }
+
+        if (healthBarBorderRenderer != null)
+        {
+            healthBarBorderRenderer.enabled = false;
         }
 
         UpdateVisualState();
@@ -217,6 +227,7 @@ public class Monster : MonoBehaviour
         }
 
         SyncColliderRadius();
+        UpdateHigherHealthBorder(playerController);
 
         if (hitFlashTimer > 0f)
         {
@@ -391,6 +402,17 @@ public class Monster : MonoBehaviour
         }
 
         UpdateOutlineState();
+    }
+
+    public void UpdateHigherHealthBorder(PlayerController playerController)
+    {
+        bool isHigher = playerController != null && currentHealth > playerController.CurrentHealth;
+        hasHigherHealthThanPlayer = isHigher;
+
+        if (healthBarBorderRenderer != null)
+        {
+            healthBarBorderRenderer.enabled = hasHigherHealthThanPlayer;
+        }
     }
 
     private void UpdateOutlineState()

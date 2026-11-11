@@ -5,6 +5,7 @@ using UnityEngine.SceneManagement;
 public enum GameState
 {
     Title,
+    Tutorial,
     Playing,
     Paused,
     AbilitySwap,
@@ -16,6 +17,7 @@ public class GameManager : MonoBehaviour
 {
     [Header("Scene & Startup Settings")]
     [SerializeField] private bool startImmediatelyOnLoad = true;
+    [SerializeField] private bool showTutorialOnStart = true;
     [SerializeField] private string mainMenuSceneName = "StartMenuScene";
 
     [Header("Game State")]
@@ -62,6 +64,7 @@ public class GameManager : MonoBehaviour
         abilitySwapSystem = swapSystem;
         audioManager = audio;
         startImmediatelyOnLoad = true;
+        showTutorialOnStart = true;
         mainMenuSceneName = "StartMenuScene";
     }
 
@@ -99,6 +102,11 @@ public class GameManager : MonoBehaviour
 
         float deltaTime = Time.deltaTime;
         survivalTime += deltaTime;
+
+        if (combatSystem != null)
+        {
+            combatSystem.SetPhaseAttackGrowthStage(CurrentPhaseNumber);
+        }
 
         if (waveSpawner != null)
         {
@@ -238,6 +246,7 @@ public class GameManager : MonoBehaviour
         if (combatSystem != null)
         {
             combatSystem.ClearAllBullets();
+            combatSystem.SetPhaseAttackGrowthStage(1);
         }
         if (vfxManager != null)
         {
@@ -250,6 +259,31 @@ public class GameManager : MonoBehaviour
         if (audioManager != null)
         {
             audioManager.PlayMainBgm();
+        }
+
+        if (showTutorialOnStart)
+        {
+            currentState = GameState.Tutorial;
+            Time.timeScale = 0f;
+        }
+        else
+        {
+            currentState = GameState.Playing;
+            Time.timeScale = 1f;
+        }
+
+        if (uiManager != null)
+        {
+            uiManager.UpdatePanelVisibility(currentState);
+        }
+        RefreshHUD();
+    }
+
+    public void CompleteTutorialAndStartPlaying()
+    {
+        if (currentState != GameState.Tutorial)
+        {
+            return;
         }
 
         currentState = GameState.Playing;

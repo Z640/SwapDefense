@@ -11,6 +11,7 @@ public class CombatSystem : MonoBehaviour
 
     [Header("Combat Tuning")]
     [SerializeField] private float bulletMoveSpeed = GameConstants.BulletSpeed;
+    [SerializeField] private float phaseAttackGrowthMultiplier = 1f;
 
     [Header("Targeting State")]
     [SerializeField] private Monster selectedTarget;
@@ -19,6 +20,13 @@ public class CombatSystem : MonoBehaviour
 
     public Monster SelectedTarget => selectedTarget;
     public float BulletMoveSpeed => bulletMoveSpeed;
+    public float PhaseAttackGrowthMultiplier => phaseAttackGrowthMultiplier;
+
+    public void SetPhaseAttackGrowthStage(int phaseNumber)
+    {
+        int clampedStage = Mathf.Clamp(phaseNumber, 1, GameConstants.MaxPhaseAttackGrowthStage);
+        phaseAttackGrowthMultiplier = 1f + (clampedStage * GameConstants.PhaseAttackGrowthPerPhase);
+    }
 
     public void SetupReferences(
         Bullet prefab,
@@ -82,9 +90,10 @@ public class CombatSystem : MonoBehaviour
         float halfW = (GameConstants.ScreenWidth * 0.5f) + GameConstants.BulletOutBoundsMargin;
         float halfH = (GameConstants.ScreenHeight * 0.5f) + GameConstants.BulletOutBoundsMargin;
 
-        float bulletDamage = abilitySwapSystem != null
+        float baseBulletDamage = abilitySwapSystem != null
             ? abilitySwapSystem.GetPlayerBulletDamage()
             : GameConstants.PlayerAttackDamage;
+        float bulletDamage = baseBulletDamage * phaseAttackGrowthMultiplier;
 
         float bulletScale = abilitySwapSystem != null
             ? abilitySwapSystem.GetPlayerBulletScaleMultiplier()

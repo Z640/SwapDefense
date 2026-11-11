@@ -5,7 +5,7 @@ using UnityEngine;
 
 public class UIManager : MonoBehaviour
 {
-    private const string DefaultTargetGuideText = "빠른 적 30 HP · 느린 적 90 HP · 매 30초마다 상대와 능력 카드를 1:1 교환합니다. [Esc]로 보유 효과 확인 가능";
+    private const string DefaultTargetGuideText = "마우스 조준 · F 공격 (길게 눌러 연사) · Q 체력 교환 · Esc 일시정지 및 보유 능력 확인";
 
     [Header("Top HUD References")]
     [SerializeField] private TMP_Text playerHealthLabelText;
@@ -29,10 +29,14 @@ public class UIManager : MonoBehaviour
     [Header("Panel References")]
     [SerializeField] private GameObject hudRootPanel;
     [SerializeField] private GameObject titlePanel;
+    [SerializeField] private GameObject tutorialPanel;
     [SerializeField] private GameObject pausePanel;
     [SerializeField] private GameObject abilitySwapPanel;
     [SerializeField] private GameObject resumeCountdownPanel;
     [SerializeField] private GameObject gameOverPanel;
+
+    [Header("Tutorial References")]
+    [SerializeField] private UnityEngine.UI.Button tutorialOkButton;
 
     [Header("Pause Ability Overview References")]
     [SerializeField] private TMP_Text pausePlayerAbilitiesText;
@@ -147,7 +151,9 @@ public class UIManager : MonoBehaviour
         TMP_Text confirmSwapBtnTxt,
         GameObject countdownModal,
         TMP_Text countdownSummaryTxt,
-        TMP_Text countdownNumTxt)
+        TMP_Text countdownNumTxt,
+        GameObject tutorialModal = null,
+        UnityEngine.UI.Button tutorialOkBtn = null)
     {
         pausePlayerAbilitiesText = pausePlayerText;
         pauseMonsterAbilitiesText = pauseMonsterText;
@@ -171,6 +177,8 @@ public class UIManager : MonoBehaviour
         resumeCountdownPanel = countdownModal;
         countdownResultSummaryText = countdownSummaryTxt;
         countdownNumberText = countdownNumTxt;
+        tutorialPanel = tutorialModal;
+        tutorialOkButton = tutorialOkBtn;
     }
 
     public void BindButtons(GameManager gameManager)
@@ -184,6 +192,12 @@ public class UIManager : MonoBehaviour
         {
             startButton.onClick.RemoveAllListeners();
             startButton.onClick.AddListener(gameManager.StartGame);
+        }
+
+        if (tutorialOkButton != null)
+        {
+            tutorialOkButton.onClick.RemoveAllListeners();
+            tutorialOkButton.onClick.AddListener(gameManager.CompleteTutorialAndStartPlaying);
         }
 
         if (resumeButton != null)
@@ -255,6 +269,10 @@ public class UIManager : MonoBehaviour
         if (titlePanel != null)
         {
             titlePanel.SetActive(state == GameState.Title);
+        }
+        if (tutorialPanel != null)
+        {
+            tutorialPanel.SetActive(state == GameState.Tutorial);
         }
         if (pausePanel != null)
         {
